@@ -1,0 +1,1 @@
+# Individuella-esp32-mqtt-azure-telemetry
