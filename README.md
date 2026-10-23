@@ -1,11 +1,85 @@
-Trådlös telemetri med ESP32, MQTT och Azure IoT Hub
+# Telemetri med ESP32, MQTT och Azure IoT Hub
 
-I arbetet har jag byggt en lösning som samlar in temperatur och luftfuktighet från två ESP32-enheter med varsin DHT11-sensor. Den första enheten skickar temperatur och den andra skickar luftfuktighet.
+## Lösningens delar
 
-Enheterna ansluter via WiFi och publicerar mätvärden var 60:e sekund till en Mosquitto-broker på Raspberry Pi. Varje enhet har ett unikt deviceId och ett eget MQTT-topic. Meddelandena skickas som JSON och innehåller enhets-ID, typ av mätning, värde och mätenhet.
+Två ESP32-enheter med varsin DHT11 skickar sensorvärden via WiFi
+och MQTT till Mosquitto på Raspberry Pi.
 
-På Raspberry Pi körs en gatewayapplikation i Python som prenumererar på båda enheternas topics. Gatewayen skickar meddelandena vidare till Azure IoT Hub via HTTPS och använder den registrerade enhetsidentiteten pi-gateway. Sensorernas ursprungliga enhets-ID och mätvärden bevaras. Om Azure inte kan nås sparas mottagna meddelanden i en lokal SQLite-kö för senare leverans.
+- `sensor_01.ino` skickar temperatur i °C.
+- `sensor_02.ino` skickar luftfuktighet i %.
+- `gateway.py` tar emot MQTT-meddelanden och skickar dem till Azure
+  IoT Hub via HTTPS. Mottagna meddelanden köas lokalt vid avbrott.
+- `local_consumer.py` visar värden från den lokala MQTT-brokern.
+- `azure_consumer.py` läser och visar värden från Azure.
+- `common.py` innehåller gemensam konfiguration och datavalidering.
 
-En lokal MQTT-konsument visar värden från brokern, medan en separat Azure-konsument läser och visar meddelanden från molnet. Lösningen har verifierats genom att båda sensorernas värden visats samtidigt på Raspberry Pi med mosquitto_sub och därefter i Azure-konsumenten.
+Varje ESP32 har ett unikt deviceId och ett eget topic.
+Meddelandena skickas som JSON med bland annat deviceId, value och unit.
+Båda enheterna skickar var 60:e sekund.
 
-WiFi- och MQTT-inställningar hanteras i lokala konfigurationsfiler för ESP32-enheterna.
+## Förberedelser
+
+### ESP32
+
+Installera ESP32-kortpaketet och biblioteken DHT sensor library,
+Adafruit Unified Sensor och PubSubClient i Arduino IDE.
+
+Kopiera `config.example.h` till `config.h` i respektive sensormapp.
+Fyll i WiFi, Pi:ns IP-adress och MQTT-inloggning.
+Ladda upp respektive `.ino`-fil till rätt ESP32.
+
+Sensorernas signal är ansluten till GPIO 4.
+Båda ESP32-enheterna måste ha ström.
+
+### Raspberry Pi och Azure
+
+Mosquitto ska vara igång på Pi:n på port 1883.
+
+Gatewayen använder den registrerade Azure-enheten `pi-gateway`.
+Azure-konsumenten använder IoT Hubs Event Hub-kompatibla
+anslutningssträng med behörigheten Service connect.
+
+Skapa en lokal `.env`-fil i projektmappen:
+
+```ini
+MQTT_HOST=127.0.0.1
+MQTT_PORT=1883
+MQTT_USER=YOUR_USERNAME
+MQTT_PASSWORD=YOUR_PASSWORD
+AZURE_DEVICE_CONNECTION_STRING=YOUR_DEVICE_CONNECTION_STRING
+EVENTHUB_CONNECTION_STRING=YOUR_EVENTHUB_CONNECTION_STRING
+EVENTHUB_CONSUMER_GROUP=$Default
+```
+
+## Installation och start
+
+Kör i projektmappen på Raspberry Pi:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Öppna tre terminaler i projektmappen och aktivera miljön i varje:
+
+```bash
+source .venv/bin/activate
+```
+
+Starta ett program i varje terminal:
+
+```bash
+python local_consumer.py
+```
+
+```bash
+python azure_consumer.py
+```
+
+```bash
+python gateway.py
+```
+
+Vänta upp till 60 sekunder på nya sensorvärden.
+Avsluta programmen med Ctrl+C.
